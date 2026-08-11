@@ -108,7 +108,10 @@ def _render_answer_extras(answer) -> None:
             for c in answer.citations:
                 score = f" · distance {c.distance:.4f}" if c.distance is not None else ""
                 st.markdown(f"**[{c.source_id}] {c.filename}, page {c.page_number}**{score}")
-                with st.expander("Supporting passage"):
+                # Non-expander presentation: Streamlit forbids nesting an
+                # expander inside the outer "Sources" expander.
+                with st.container(border=True):
+                    st.caption("Supporting passage")
                     st.text(c.passage)
                     st.caption(f"Chunk ID: `{c.chunk_id}`")
 
