@@ -39,3 +39,46 @@ def test_no_nested_st_expander():
             if _contains_expander_call(node.body):
                 offenders.append(node.lineno)
     assert not offenders, f"nested st.expander found at app.py line(s): {offenders}"
+
+
+def test_developer_details_hidden_by_default():
+    """The diagnostics flag is off unless explicitly enabled via env."""
+    from src import config
+    assert config.SHOW_DEVELOPER_DETAILS is False
+
+
+def _tests_show_dev_flag(test: ast.AST) -> bool:
+    # Matches `config.SHOW_DEVELOPER_DETAILS` used as a truthy If test.
+    return any(
+        isinstance(n, ast.Attribute) and n.attr == "SHOW_DEVELOPER_DETAILS"
+        for n in ast.walk(test)
+    )
+
+
+def test_developer_panel_is_gated_by_flag():
+    """The '🛠 Developer details' expander must sit inside an
+    `if config.SHOW_DEVELOPER_DETAILS:` block, so it never renders by default."""
+    tree = ast.parse(APP.read_text(encoding="utf-8"), filename=str(APP))
+
+    # Locate the dev-details expander `with` node.
+    dev_with = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.With) and any(
+            _is_st_expander(item.context_expr)
+            and item.context_expr.args
+            and isinstance(item.context_expr.args[0], ast.Constant)
+            and "Developer details" in str(item.context_expr.args[0].value)
+            for item in node.items
+        ):
+            dev_with = node
+            break
+    assert dev_with is not None, "Developer details expander not found in app.py"
+
+    # It must be inside an `if config.SHOW_DEVELOPER_DETAILS:` subtree.
+    gated = any(
+        isinstance(node, ast.If)
+        and _tests_show_dev_flag(node.test)
+        and any(dev_with is d for d in ast.walk(node))
+        for node in ast.walk(tree)
+    )
+    assert gated, "Developer details panel is not gated by SHOW_DEVELOPER_DETAILS"

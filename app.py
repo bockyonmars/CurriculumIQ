@@ -113,7 +113,8 @@ def _render_answer_extras(answer) -> None:
                 with st.container(border=True):
                     st.caption("Supporting passage")
                     st.text(c.passage)
-                    st.caption(f"Chunk ID: `{c.chunk_id}`")
+                    if config.SHOW_DEVELOPER_DETAILS:
+                        st.caption(f"Chunk ID: `{c.chunk_id}`")
 
     meta = f"⏱ {answer.latency_seconds:.2f}s (retrieval {answer.retrieval_seconds:.2f}s, "
     meta += f"generation {answer.generation_seconds:.2f}s) · model `{answer.model}`"
@@ -362,7 +363,8 @@ if doc is not None:
                 st.write(preview)
                 with st.expander("Full chunk text"):
                     st.text(r.text)
-                    st.caption(f"Chunk ID: `{r.chunk_id}`")
+                    if config.SHOW_DEVELOPER_DETAILS:
+                        st.caption(f"Chunk ID: `{r.chunk_id}`")
                 st.divider()
 
     # --- AI Tutor -----------------------------------------------------------
@@ -441,34 +443,35 @@ if doc is not None:
                 _handle_question(question, doc, only_this_doc)
             st.rerun()
 
-    # --- Developer details --------------------------------------------------
-    with st.expander("🛠 Developer details"):
-        st.write({
-            "document_id": doc.document_id,
-            "chunk_count": len(chunks),
-            "embedding_model": config.OPENAI_EMBEDDING_MODEL,
-            "chat_model": config.OPENAI_CHAT_MODEL,
-            "chunk_size_tokens": config.RAG_CHUNK_SIZE_TOKENS,
-            "chunk_overlap_tokens": config.RAG_CHUNK_OVERLAP_TOKENS,
-            "top_k_default": config.RAG_TOP_K,
-            "max_context_chunks": config.RAG_MAX_CONTEXT_CHUNKS,
-            "max_context_tokens": config.RAG_MAX_CONTEXT_TOKENS,
-            "max_distance (lower=closer)": config.RAG_MAX_DISTANCE,
-            "history_message_limit": config.RAG_HISTORY_MESSAGE_LIMIT,
-            "api_key_configured": key_present,
-            "generation_enabled": config.generation_enabled(),
-        })
-        if key_present:
-            try:
-                store = get_vector_store()
-                st.write({
-                    "chroma_collection": config.CHROMA_COLLECTION_NAME,
-                    "chroma_total_chunks": store.count(),
-                    "this_document_indexed": store.has_document(doc.document_id),
-                    "indexed_document_ids": store.list_document_ids(),
-                })
-            except VectorStoreError as exc:
-                st.caption(f"Chroma status unavailable: {exc}")
+    # --- Developer details (hidden by default; opt-in for local debugging) ---
+    if config.SHOW_DEVELOPER_DETAILS:
+        with st.expander("🛠 Developer details"):
+            st.write({
+                "document_id": doc.document_id,
+                "chunk_count": len(chunks),
+                "embedding_model": config.OPENAI_EMBEDDING_MODEL,
+                "chat_model": config.OPENAI_CHAT_MODEL,
+                "chunk_size_tokens": config.RAG_CHUNK_SIZE_TOKENS,
+                "chunk_overlap_tokens": config.RAG_CHUNK_OVERLAP_TOKENS,
+                "top_k_default": config.RAG_TOP_K,
+                "max_context_chunks": config.RAG_MAX_CONTEXT_CHUNKS,
+                "max_context_tokens": config.RAG_MAX_CONTEXT_TOKENS,
+                "max_distance (lower=closer)": config.RAG_MAX_DISTANCE,
+                "history_message_limit": config.RAG_HISTORY_MESSAGE_LIMIT,
+                "api_key_configured": key_present,
+                "generation_enabled": config.generation_enabled(),
+            })
+            if key_present:
+                try:
+                    store = get_vector_store()
+                    st.write({
+                        "chroma_collection": config.CHROMA_COLLECTION_NAME,
+                        "chroma_total_chunks": store.count(),
+                        "this_document_indexed": store.has_document(doc.document_id),
+                        "indexed_document_ids": store.list_document_ids(),
+                    })
+                except VectorStoreError as exc:
+                    st.caption(f"Chroma status unavailable: {exc}")
 
 # --- Roadmap ----------------------------------------------------------------
 st.divider()

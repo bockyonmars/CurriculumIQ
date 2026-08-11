@@ -67,6 +67,12 @@ MAX_QUESTIONS_PER_SESSION: int = int(os.getenv("MAX_QUESTIONS_PER_SESSION", "20"
 # Optional shared access code gating the app. Empty = no gate (local dev).
 APP_ACCESS_CODE: str = os.getenv("APP_ACCESS_CODE", "")
 
+# Internal diagnostics panel (document IDs, model config, vector-store state).
+# Hidden by default; opt in for local debugging only. Never enable in public.
+SHOW_DEVELOPER_DETAILS: bool = os.getenv("SHOW_DEVELOPER_DETAILS", "false").strip().lower() in (
+    "1", "true", "yes", "on",
+)
+
 
 def has_openai_key() -> bool:
     """True if an OpenAI API key is configured. Never logs or returns the key."""
