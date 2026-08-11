@@ -82,3 +82,15 @@ def test_developer_panel_is_gated_by_flag():
         for node in ast.walk(tree)
     )
     assert gated, "Developer details panel is not gated by SHOW_DEVELOPER_DETAILS"
+
+
+def test_stale_whats_next_section_removed():
+    src = APP.read_text(encoding="utf-8")
+    assert "What's next" not in src
+    assert "Roadmap" not in src
+
+
+def test_primary_stage_labels_present():
+    src = APP.read_text(encoding="utf-8")
+    for label in ("Choose PDF", "Prepare curriculum", "Ask questions"):
+        assert label in src

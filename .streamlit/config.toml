@@ -2,3 +2,12 @@
 # the 15 MB validation limit (see src/config.py / MAX_FILE_SIZE_MB).
 [server]
 maxUploadSize = 15
+
+# Calm, academic light theme with a restrained teal accent.
+[theme]
+base = "light"
+primaryColor = "#0f766e"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f6f8"
+textColor = "#1f2933"
+font = "sans serif"
