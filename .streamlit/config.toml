@@ -1,0 +1,4 @@
+# Streamlit server config. Keeps the uploader's advertised limit in sync with
+# the 15 MB validation limit (see src/config.py / MAX_FILE_SIZE_MB).
+[server]
+maxUploadSize = 15

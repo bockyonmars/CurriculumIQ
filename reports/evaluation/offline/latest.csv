@@ -1,0 +1,25 @@
+id,category,answerable,passed,retrieval_hit,page_coverage,answered,abstained,citation_valid,citation_page_hit,keyword_coverage,latency_seconds,error,reason
+f01,factual,True,False,True,1.000,False,True,False,False,0.000,0.0020,,abstained on an answerable question
+f02,factual,True,False,True,1.000,True,False,True,False,0.667,0.0020,,no citation on an expected page
+f03,factual,True,False,True,1.000,True,False,True,False,0.000,0.0030,,no citation on an expected page
+f04,factual,True,True,True,1.000,True,False,True,True,1.000,0.0030,,
+f05,factual,True,True,True,1.000,True,False,True,True,1.000,0.0020,,
+f06,factual,True,True,True,1.000,True,False,True,True,1.000,0.0020,,
+f07,factual,True,True,True,1.000,True,False,True,True,1.000,0.0020,,
+f08,factual,True,True,True,1.000,True,False,True,True,1.000,0.0020,,
+f09,factual,True,True,True,1.000,True,False,True,True,1.000,0.0030,,
+f10,factual,True,True,True,1.000,True,False,True,True,1.000,0.0020,,
+f11,factual,True,True,True,1.000,True,False,True,True,1.000,0.0020,,
+f12,factual,True,True,True,1.000,True,False,True,True,1.000,0.0020,,
+f13,factual,True,True,True,1.000,True,False,True,True,1.000,0.0030,,
+f14,factual,True,True,True,1.000,True,False,True,True,1.000,0.0020,,
+p01,paraphrase,True,True,True,1.000,True,False,True,True,1.000,0.0020,,
+p02,paraphrase,True,False,True,1.000,False,True,False,False,0.000,0.0020,,abstained on an answerable question
+p03,paraphrase,True,False,True,1.000,False,True,False,False,0.000,0.0020,,abstained on an answerable question
+p04,paraphrase,True,False,True,1.000,False,True,False,False,0.000,0.0020,,abstained on an answerable question
+m01,multi_chunk,True,False,True,1.000,False,True,False,False,0.000,0.0020,,abstained on an answerable question
+m02,multi_chunk,True,True,True,1.000,True,False,True,True,0.500,0.0030,,
+u01,unsupported,False,True,False,0.000,False,True,False,False,0.000,0.0020,,
+u02,unsupported,False,True,False,0.000,False,True,False,False,0.000,0.0020,,
+u03,unsupported,False,True,False,0.000,False,True,False,False,0.000,0.0020,,
+u04,unsupported,False,True,False,0.000,False,True,False,False,0.000,0.0020,,

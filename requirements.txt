@@ -1,0 +1,24 @@
+# CurriculumIQ dependencies. Verified on Python 3.11.
+# Install:  pip install -r requirements.txt
+
+# --- Milestone 1: foundation & PDF extraction ---
+streamlit==1.38.0
+PyMuPDF==1.24.10
+pydantic==2.8.2
+python-dotenv==1.0.1
+pytest==8.3.2
+
+# --- Milestone 2: chunking, embeddings, Chroma, retrieval ---
+openai==2.53.0
+langchain==1.3.14
+langchain-openai==1.4.2
+langchain-text-splitters==1.1.2
+langchain-chroma==1.1.0
+chromadb==1.5.9
+tiktoken==0.13.0
+
+# Pins to keep chromadb's transitive stack compatible with streamlit's
+# protobuf<6 requirement (chromadb pulls onnxruntime/opentelemetry which
+# otherwise want protobuf 7). Without these, `pip install` reports conflicts.
+protobuf==5.29.6
+googleapis-common-protos==1.65.0
