@@ -213,3 +213,23 @@ def test_no_whats_next_anywhere(monkeypatch):
     ready = _ready(monkeypatch)
     assert "What's next" not in _texts(empty)
     assert "What's next" not in _texts(ready)
+
+
+def test_gateway_mode_renders_from_normalized_view(monkeypatch):
+    # In gateway mode, the ready state is built from the gateway's JSON response
+    # (no in-process ExtractedDocument, no local vector store call).
+    _open_gate(monkeypatch)
+    monkeypatch.setattr(config, "SERVICE_MODE", "gateway")
+    at = AppTest.from_file(APP)
+    at.session_state["gateway_doc"] = {
+        "document_id": "doc_gw", "filename": "gateway_doc.pdf", "pages": 6,
+        "chunks": 6, "skipped_pages": [], "status": "ready",
+    }
+    at.session_state["indexed"] = True
+    at.run(timeout=30)
+    text = _texts(at)
+    assert "Your curriculum is ready" in text
+    assert "gateway_doc.pdf" in text
+    assert "Ask your curriculum" in text
+    # Passage search is direct-mode only; it must not appear in gateway mode.
+    assert "Advanced tools" not in text

@@ -127,6 +127,86 @@ question
 For milestone-by-milestone history and design rationale, see
 [PROJECT_SPEC.md](PROJECT_SPEC.md) and [TASKS.md](TASKS.md).
 
+## Service architecture & Docker
+
+The AI/domain logic (`src/`) is exposed two ways, selected by `SERVICE_MODE`:
+
+```
+Streamlit UI  ──(gateway mode)──▶  Spring Boot gateway  ──▶  Python AI API  ──▶  src/  ──▶  OpenAI + Chroma
+     └─────────(direct mode)──────────────────────────────────────────────────▶  src/  ──▶  OpenAI + Chroma
+```
+
+| Mode | Path | Used by |
+|------|------|---------|
+| **direct** (default) | Streamlit imports `src/` in process | **Streamlit Community Cloud** (the public demo) |
+| **gateway** | Streamlit → Spring → Python service → `src/` | **Docker Compose** demo |
+
+- **Streamlit Cloud uses direct Python mode.** Docker Compose demonstrates the
+  complete **Streamlit → Spring → Python** architecture.
+- **The Python service owns all AI operations** (OpenAI + Chroma). The
+  **Spring gateway is a proxy only — it holds no OpenAI secret** and never calls
+  OpenAI. `OPENAI_API_KEY` is passed to the Python service at runtime, never
+  baked into an image.
+- **Local Chroma persistence uses a Docker named volume** (`chroma_data`), so an
+  indexed document survives container restarts. **Hosted Streamlit storage
+  remains ephemeral.**
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full diagram and
+[docs/API.md](docs/API.md) for the endpoint contract.
+
+### Spring Boot gateway
+
+A small Java 17 / Spring Boot 3 service (`spring-gateway/`) that proxies the
+Python API and demonstrates REST controllers, a service layer, DTO records,
+`RestClient` with connect/read timeouts, externalized `PYTHON_SERVICE_URL`,
+global safe exception handling, and health checks (custom `/api/health` +
+Spring Actuator `/actuator/health`). It contains no AI logic and no secret.
+
+### Docker quick start
+
+```bash
+docker compose up --build      # Streamlit :8501, Spring :8080, Python API internal
+```
+
+Then open http://localhost:8501. Provide your key at runtime (never committed):
+
+```bash
+OPENAI_API_KEY=sk-... docker compose up --build
+```
+
+Deterministic smoke test (health checks need no API; the live flow is opt-in):
+
+```bash
+bash scripts/docker_smoke.sh              # health only
+SMOKE_LIVE=1 bash scripts/docker_smoke.sh # + upload/ask through Spring (uses credit)
+```
+
+### API examples
+
+```bash
+# Prepare a document (multipart) — via the Spring gateway
+curl -F "file=@data/sample_documents/intro_to_algebra.pdf;type=application/pdf" \
+     http://localhost:8080/api/documents
+
+# Ask a grounded question
+curl -X POST http://localhost:8080/api/questions -H 'Content-Type: application/json' \
+     -d '{"document_id":"<id>","question":"What is a variable in algebra?"}'
+```
+
+Full request/response shapes: [docs/API.md](docs/API.md).
+
+## Technology stack
+
+- **Python 3.11** — core domain logic (`src/`).
+- **Streamlit** — student UI. **FastAPI + Uvicorn** — Python AI service.
+- **PyMuPDF** (extraction), **tiktoken** + **LangChain splitters** (chunking),
+  **Chroma** (vector store), **OpenAI** (embeddings + Responses API).
+- **Java 17 + Spring Boot 3** — REST gateway (`RestClient`, Actuator).
+- **Docker + Docker Compose** — the full three-service architecture.
+- **Pytest** (138 tests) and **JUnit / Spring Test** (8 tests).
+
+Performance measurements: [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+
 ## Local setup
 
 **Requirements:** Python **3.11** (the Chroma/embedding stack resolves cleanly on
@@ -186,7 +266,13 @@ search, and the tutor are disabled with a clear message.
 
 ```bash
 streamlit run app.py     # open the URL Streamlit prints (default :8501)
-pytest                   # 109 tests, all offline (fake embeddings, temp Chroma) — no cost
+pytest                   # 138 Python tests, all offline (fakes + temp Chroma) — no cost
+```
+
+The Spring gateway has its own tests (run via Docker if you don't have Maven):
+
+```bash
+docker run --rm -v "$PWD/spring-gateway":/app -w /app maven:3.9-eclipse-temurin-17 mvn -B test
 ```
 
 ### Demo walkthrough (bundled synthetic PDF)
@@ -245,11 +331,15 @@ See **[RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)**.
 
 ## Access control & cost protection (public demos)
 
-- **Session question cap:** `MAX_QUESTIONS_PER_SESSION` (default 20) limits tutor
-  questions per browser session and shows a remaining count — protecting a public
-  deployment from unbounded API cost.
+- **Session question cap:** `MAX_QUESTIONS_PER_SESSION` limits tutor questions per
+  browser session and shows a remaining count — protecting a public deployment
+  from unbounded API cost. **Recommended for the public demo: `5`.**
 - **Access code:** set `APP_ACCESS_CODE` (env or Streamlit secret) to gate the app
   behind a shared code (constant-time comparison; never logged or displayed).
+  **The public submission demo opens without an access screen** — this is done by
+  leaving `APP_ACCESS_CODE` **unset** in Streamlit secrets (the gate logic stays in
+  the code, it's simply not configured). The Docker Compose stack is likewise open
+  (no `APP_ACCESS_CODE`).
 
 ## Security & privacy
 
@@ -307,6 +397,9 @@ See **[RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)**.
 
 ## Project documentation
 
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — service architecture + diagram.
+- [docs/API.md](docs/API.md) — Python/Spring API reference.
+- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) — measured performance & optimizations.
 - [PROJECT_SPEC.md](PROJECT_SPEC.md) — product spec, scope, and architecture.
 - [TASKS.md](TASKS.md) — milestone history and status (all milestones complete).
 - [DEPLOYMENT.md](DEPLOYMENT.md) — deployment procedure and configuration.

@@ -32,6 +32,18 @@ OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 OPENAI_CHAT_MODEL: str = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 OPENAI_EMBEDDING_MODEL: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
+# --- Service architecture (Module 13/14) ---
+# "direct"  = Streamlit calls the Python domain services in-process (default;
+#             this is what Streamlit Cloud uses).
+# "gateway" = Streamlit calls the Spring gateway, which proxies the Python API
+#             (used by the Docker Compose demo).
+SERVICE_MODE: str = os.getenv("SERVICE_MODE", "direct").strip().lower()
+SPRING_GATEWAY_URL: str = os.getenv("SPRING_GATEWAY_URL", "http://localhost:8080")
+
+
+def gateway_mode() -> bool:
+    return SERVICE_MODE == "gateway"
+
 # --- RAG / retrieval config (Milestone 2) ---
 # Local, untracked directory for the Chroma vector database (see .gitignore).
 CHROMA_PERSIST_DIRECTORY: str = os.getenv(

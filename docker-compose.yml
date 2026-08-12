@@ -1,0 +1,74 @@
+# CurriculumIQ full architecture: Streamlit → Spring gateway → Python AI service.
+# Start with:  docker compose up --build
+# OPENAI_API_KEY is passed at runtime (from your shell env or a local .env);
+# it is never baked into an image. Spring holds no OpenAI secret.
+
+services:
+  python-ai-service:
+    build:
+      context: .
+      dockerfile: python_service/Dockerfile
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
+      CHROMA_PERSIST_DIRECTORY: /app/.curriculumiq_data/chroma
+    volumes:
+      - chroma_data:/app/.curriculumiq_data
+    # Internal only — not published. Uncomment to debug the API directly.
+    # ports:
+    #   - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    networks: [curriculumiq]
+
+  spring-gateway:
+    build:
+      context: ./spring-gateway
+    environment:
+      PYTHON_SERVICE_URL: http://python-ai-service:8000
+    ports:
+      - "8080:8080"
+    depends_on:
+      python-ai-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [curriculumiq]
+
+  streamlit-app:
+    build:
+      context: .
+      dockerfile: streamlit.Dockerfile
+    environment:
+      SERVICE_MODE: gateway
+      SPRING_GATEWAY_URL: http://spring-gateway:8080
+      MAX_QUESTIONS_PER_SESSION: "5"
+      # APP_ACCESS_CODE intentionally unset here → open demo in the Docker stack.
+    ports:
+      - "8501:8501"
+    depends_on:
+      spring-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8501/_stcore/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [curriculumiq]
+
+volumes:
+  chroma_data:
+
+networks:
+  curriculumiq:
+    driver: bridge

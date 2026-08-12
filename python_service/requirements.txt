@@ -1,0 +1,5 @@
+# Extra deps for the FastAPI adapter. The core CurriculumIQ stack is installed
+# from the repo-root requirements.txt (see python_service/Dockerfile).
+fastapi==0.115.6
+uvicorn==0.34.0
+python-multipart==0.0.20

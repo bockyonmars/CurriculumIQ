@@ -12,6 +12,8 @@ latency) is kept out of the main journey and only shown under
 from __future__ import annotations
 
 import logging
+import uuid
+from types import SimpleNamespace
 
 import streamlit as st
 
@@ -22,10 +24,12 @@ from src.generation.tutor import TutorError, TutorService
 from src.ingestion.chunker import chunk_document
 from src.ingestion.extractor import ExtractionError, extract_document
 from src.ingestion.validator import ValidationError, validate_pdf
+from src.models import SourceCitation, TutorAnswer
 from src.retrieval.embeddings import EmbeddingError, OpenAIEmbeddingProvider
 from src.retrieval.indexer import IndexingError, IndexingService
 from src.retrieval.retriever import RetrievalService
 from src.retrieval.vector_store import VectorStore, VectorStoreError
+from src.service_client import GatewayClient, GatewayError
 
 logging.basicConfig(level=logging.INFO)
 
@@ -64,6 +68,39 @@ def build_tutor() -> TutorService:
     return TutorService(retriever, provider)
 
 
+@st.cache_resource(show_spinner=False)
+def get_gateway_client() -> GatewayClient:
+    return GatewayClient(config.SPRING_GATEWAY_URL)
+
+
+def _current_view():
+    """Normalized view of the prepared document for both service modes.
+
+    In ``gateway`` mode the fields come from the gateway's JSON response; in
+    ``direct`` mode they come from the in-process ExtractedDocument. Returns
+    ``None`` when no document is prepared.
+    """
+    gw = st.session_state.get("gateway_doc")
+    if gw is not None:
+        return SimpleNamespace(
+            document_id=gw.get("document_id", ""),
+            filename=gw.get("filename", "document.pdf"),
+            page_count=int(gw.get("pages", 0)),
+            chunk_count=int(gw.get("chunks", 0)),
+            skipped_pages=list(gw.get("skipped_pages", [])),
+        )
+    doc = st.session_state.get("document")
+    if doc is not None:
+        return SimpleNamespace(
+            document_id=doc.document_id,
+            filename=doc.filename,
+            page_count=doc.page_count,
+            chunk_count=len(st.session_state.get("chunks", [])),
+            skipped_pages=_skipped_pages(doc),
+        )
+    return None
+
+
 # --- Session helpers --------------------------------------------------------
 def _clear_search() -> None:
     st.session_state.pop("search_results", None)
@@ -78,7 +115,8 @@ def _clear_chat() -> None:
 
 def _reset() -> None:
     """Clear the current document and all derived UI state (incl. chat)."""
-    for key in ("document", "processed_name", "chunks", "chunk_warnings", "indexed"):
+    for key in ("document", "processed_name", "chunks", "chunk_warnings", "indexed",
+                "gateway_doc"):
         st.session_state.pop(key, None)
     _clear_search()
     _clear_chat()
@@ -95,7 +133,11 @@ def _run_preparation(file_bytes: bytes, filename: str) -> None:
     Reuses the existing backend functions and their safe errors; presents the
     sequence as a single friendly progress flow. On success, advances to the
     ready state; on any handled error, stays put with a clear message.
+    In ``gateway`` mode the same flow is proxied through the Spring gateway.
     """
+    if config.gateway_mode():
+        _run_preparation_gateway(file_bytes, filename)
+        return
     try:
         with st.status("Preparing your curriculum…", expanded=True) as status:
             status.update(label="Reading PDF")
@@ -138,7 +180,42 @@ def _run_preparation(file_bytes: bytes, filename: str) -> None:
         st.session_state["error"] = str(exc)
 
 
-def _handle_question(question: str, document) -> None:
+def _run_preparation_gateway(file_bytes: bytes, filename: str) -> None:
+    """Prepare the document by proxying through the Spring gateway."""
+    try:
+        with st.status("Preparing your curriculum…", expanded=True) as status:
+            status.update(label="Reading PDF")
+            status.update(label="Preparing your tutor")
+            data = get_gateway_client().prepare_document(file_bytes, filename)
+            status.update(label="Ready", state="complete")
+        _reset()
+        st.session_state["gateway_doc"] = data
+        st.session_state["indexed"] = True
+        st.session_state.pop("error", None)
+        st.rerun()
+    except GatewayError as exc:
+        _reset()
+        st.session_state["error"] = str(exc)
+
+
+def _answer_from_gateway(question: str, document_id: str, data: dict) -> TutorAnswer:
+    """Adapt a gateway /api/questions response into a TutorAnswer for rendering."""
+    cites = [
+        SourceCitation(
+            source_id=c.get("source_id", f"S{i + 1}"), chunk_id="", document_id=document_id,
+            filename=c.get("filename", ""), page_number=int(c.get("page", 1)),
+            passage=c.get("passage", ""), distance=None, rank=i + 1,
+        )
+        for i, c in enumerate(data.get("citations", []))
+    ]
+    return TutorAnswer(
+        answer_id=uuid.uuid4().hex, question=question, answer_text=data.get("answer", ""),
+        citations=cites, retrieved_sources=cites, abstained=bool(data.get("abstained", False)),
+        model="", retrieval_seconds=0.0, generation_seconds=0.0, latency_seconds=0.0,
+    )
+
+
+def _handle_question(question: str, document_id: str) -> None:
     """Run one tutor turn and append user + assistant messages to history."""
     history = st.session_state.setdefault("chat_history", [])
 
@@ -159,9 +236,20 @@ def _handle_question(question: str, document) -> None:
 
     prior = [(m["role"], m["content"]) for m in history]
     history.append({"role": "user", "content": question})
+
+    if config.gateway_mode():
+        try:
+            data = get_gateway_client().ask(document_id, question)
+            answer = _answer_from_gateway(question, document_id, data)
+            history.append({"role": "assistant", "content": answer.answer_text, "answer": answer})
+            st.session_state["questions_asked"] = asked + 1
+        except GatewayError as exc:
+            history.append({"role": "assistant", "content": f"Sorry — {exc}", "answer": None})
+        return
+
     bounded = bound_history(prior, config.RAG_HISTORY_MESSAGE_LIMIT)
     try:
-        answer = build_tutor().answer(question, document_id=document.document_id, history=bounded)
+        answer = build_tutor().answer(question, document_id=document_id, history=bounded)
         history.append({"role": "assistant", "content": answer.answer_text, "answer": answer})
         st.session_state["questions_asked"] = asked + 1
     except TutorError as exc:
@@ -204,9 +292,8 @@ def _privacy_note() -> None:
         )
 
 
-def _render_skipped_warning(doc) -> None:
+def _render_skipped_warning(skipped) -> None:
     """Aggregate empty-page warnings into one calm message + optional detail."""
-    skipped = _skipped_pages(doc)
     if not skipped:
         return
     st.warning(
@@ -303,11 +390,11 @@ if config.access_required() and not st.session_state.get("access_granted"):
 # ---------------------------------------------------------------------------
 # Product flow
 # ---------------------------------------------------------------------------
-doc = st.session_state.get("document")
+view = _current_view()
 indexed = bool(st.session_state.get("indexed"))
 
 # ===== STATE A — no document =====
-if doc is None:
+if view is None:
     _stepper("choose")
     st.divider()
     st.subheader("Choose your curriculum")
@@ -328,30 +415,27 @@ if doc is None:
 
 # ===== STATE C — document ready (or prepared without a key) =====
 else:
-    chunks = st.session_state.get("chunks", [])
-
     _stepper("ask")
     st.divider()
 
     # Compact success card.
     with st.container(border=True):
         st.markdown("### ✓ Your curriculum is ready")
-        st.write(f"**{doc.filename}** · {doc.page_count} "
-                 f"page{'s' if doc.page_count != 1 else ''}")
+        st.write(f"**{view.filename}** · {view.page_count} "
+                 f"page{'s' if view.page_count != 1 else ''}")
 
-    _render_skipped_warning(doc)
+    _render_skipped_warning(view.skipped_pages)
 
     # Collapsed technical summary — out of the main journey.
     with st.expander("Document details"):
-        st.markdown(
-            f"- **File:** {doc.filename}\n"
-            f"- **Pages:** {doc.page_count:,}\n"
-            f"- **Words:** {doc.total_word_count:,}\n"
-            f"- **File size:** {doc.file_size_mb:.2f} MB\n"
-            f"- **Prepared sections:** {len(chunks):,}\n"
+        details = (
+            f"- **File:** {view.filename}\n"
+            f"- **Pages:** {view.page_count:,}\n"
+            f"- **Prepared sections:** {view.chunk_count:,}\n"
             f"- **Skipped (empty) pages:** "
-            + (", ".join(str(p) for p in _skipped_pages(doc)) or "none")
+            + (", ".join(str(p) for p in view.skipped_pages) or "none")
         )
+        st.markdown(details)
 
     # Secondary action: start over / replace PDF.
     if st.button("Replace PDF / Start over", use_container_width=False):
@@ -377,7 +461,7 @@ else:
         for i, example in enumerate(EXAMPLE_QUESTIONS):
             if st.button(example, key=f"example_{i}", use_container_width=True):
                 with st.spinner("Thinking…"):
-                    _handle_question(example, doc)
+                    _handle_question(example, view.document_id)
                 st.rerun()
 
         # Conversation so far.
@@ -410,11 +494,13 @@ else:
         )
         if question:
             with st.spinner("Thinking…"):
-                _handle_question(question, doc)
+                _handle_question(question, view.document_id)
             st.rerun()
 
         # ----- Advanced tools (optional; must not compete with the tutor) -----
-        with st.expander("Advanced tools — passage search"):
+        # Direct-mode only: passage search uses the in-process vector store.
+        if not config.gateway_mode():
+          with st.expander("Advanced tools — passage search"):
             st.caption("Search the exact passages in your curriculum.")
             query = st.text_input("Search your curriculum")
             if st.button("Search", disabled=not query.strip()):
@@ -425,7 +511,7 @@ else:
                         get_embedding_provider(config.OPENAI_EMBEDDING_MODEL),
                     )
                     st.session_state["search_results"] = retriever.search(
-                        query, top_k=config.RAG_TOP_K, document_id=doc.document_id
+                        query, top_k=config.RAG_TOP_K, document_id=view.document_id
                     )
                 except (ValueError, EmbeddingError, VectorStoreError) as exc:
                     st.session_state["search_error"] = str(exc)
@@ -450,8 +536,9 @@ else:
     if config.SHOW_DEVELOPER_DETAILS:
         with st.expander("🛠 Developer details"):
             st.write({
-                "document_id": doc.document_id,
-                "chunk_count": len(chunks),
+                "service_mode": config.SERVICE_MODE,
+                "document_id": view.document_id,
+                "chunk_count": view.chunk_count,
                 "embedding_model": config.OPENAI_EMBEDDING_MODEL,
                 "chat_model": config.OPENAI_CHAT_MODEL,
                 "chunk_size_tokens": config.RAG_CHUNK_SIZE_TOKENS,
@@ -464,13 +551,14 @@ else:
                 "indexed": indexed,
                 "generation_enabled": config.generation_enabled(),
             })
-            try:
-                store = get_vector_store()
-                st.write({
-                    "chroma_collection": config.CHROMA_COLLECTION_NAME,
-                    "chroma_total_chunks": store.count(),
-                    "this_document_indexed": store.has_document(doc.document_id),
-                    "indexed_document_ids": store.list_document_ids(),
-                })
-            except VectorStoreError as exc:
-                st.caption(f"Vector store status unavailable: {exc}")
+            if not config.gateway_mode():
+                try:
+                    store = get_vector_store()
+                    st.write({
+                        "chroma_collection": config.CHROMA_COLLECTION_NAME,
+                        "chroma_total_chunks": store.count(),
+                        "this_document_indexed": store.has_document(view.document_id),
+                        "indexed_document_ids": store.list_document_ids(),
+                    })
+                except VectorStoreError as exc:
+                    st.caption(f"Vector store status unavailable: {exc}")

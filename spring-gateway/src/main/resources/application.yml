@@ -1,0 +1,28 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: curriculumiq-spring-gateway
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
+
+# Downstream Python AI service. Overridden in Docker via PYTHON_SERVICE_URL.
+python:
+  service:
+    url: ${PYTHON_SERVICE_URL:http://localhost:8000}
+    connect-timeout-ms: 3000
+    read-timeout-ms: 60000
+
+# Actuator health endpoint for container health checks.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true

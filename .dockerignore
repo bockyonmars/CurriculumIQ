@@ -1,0 +1,18 @@
+# Keep images small and never ship secrets or local state.
+.git
+.gitignore
+.venv
+.env
+.env.*
+.streamlit/secrets.toml
+.curriculumiq_data
+**/__pycache__
+*.pyc
+.pytest_cache
+tests
+reports
+screenshots
+docs
+spring-gateway
+scripts
+*.md

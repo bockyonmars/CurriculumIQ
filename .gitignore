@@ -32,3 +32,6 @@ uploads/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Java / Maven build output
+target/
