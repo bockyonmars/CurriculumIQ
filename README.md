@@ -32,6 +32,15 @@ locally (see [Local setup](#local-setup)). Then, in three steps:
 3. **Ask** a question in the **AI Tutor** — get a grounded answer with `[S#]`
    citations you can expand to the exact source page.
 
+## Curriculum deliverables
+
+| Module | Deliverable | Where |
+|--------|-------------|-------|
+| 13 | Spring Boot API (proxies the Python AI service) | [`spring-gateway/`](spring-gateway/) |
+| 14 | Containerized services (deploy locally with Docker) | [`docker-compose.yml`](docker-compose.yml) + `python_service/Dockerfile`, `spring-gateway/Dockerfile`, `streamlit.Dockerfile` |
+| 15 | Working application, tests and evaluation reports | [`app.py`](app.py), [`src/`](src/), [`tests/`](tests/), [`reports/evaluation/`](reports/evaluation/) |
+| 16 | Live demo, README, docs and presentation | [Live demo](https://cewkymd8vqval4sjweyy8q.streamlit.app/), this README, [`docs/`](docs/) |
+
 ## Features
 
 - **Grounded answers only.** The tutor answers strictly from retrieved curriculum
@@ -174,12 +183,18 @@ Then open http://localhost:8501. Provide your key at runtime (never committed):
 OPENAI_API_KEY=sk-... docker compose up --build
 ```
 
-Deterministic smoke test (health checks need no API; the live flow is opt-in):
+Deterministic smoke test:
 
 ```bash
 bash scripts/docker_smoke.sh              # health only
-SMOKE_LIVE=1 bash scripts/docker_smoke.sh # + upload/ask through Spring (uses credit)
+SMOKE_LIVE=1 bash scripts/docker_smoke.sh # + live AI flow through Spring (uses credit)
 ```
+
+`docker_smoke.sh` checks the **Streamlit HTTP health endpoint** (`/_stcore/health`)
+plus the Python and Spring health endpoints, and — with `SMOKE_LIVE=1` — tests the
+**live AI flow directly through the Spring gateway** (upload a PDF, ask a supported
+question and check for a citation, ask an unsupported question and check for
+abstention). It does **not** drive or test the Streamlit browser journey.
 
 ### API examples
 
